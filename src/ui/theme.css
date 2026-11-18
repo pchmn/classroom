@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, sans-serif;
+
+  --color-ink: #1f2430;
+  --color-paper: #f7f5f0;
+  --color-surface: #fff;
+  --color-highlight: #eef3ff;
+  --color-muted: #8a8578;
+  --color-divider: #d8d4ca;
+  --color-danger: #c0392b;
+
+  --radius-control: 0.6rem;
+  --radius-panel: 0.9rem;
+}
+
+@layer base {
+  html {
+    color: var(--color-ink);
+    background: var(--color-paper);
+    font-family: var(--font-sans);
+  }
+
+  button {
+    cursor: pointer;
+  }
+}
