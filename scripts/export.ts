@@ -1,9 +1,14 @@
 // Writes the grids as SVG + transparent PNG (for Google Slides, which doesn't import SVG).
-// Usage: node scripts/export.mjs [tenths=7] [hundredths=5]
-import { writeFileSync, mkdirSync } from "node:fs";
+// Usage: pnpm export [tenths=7] [hundredths=5]
 import { execFileSync } from "node:child_process";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { baseGrid, unitGrid, tenthsGrid, hundredthsGrid } from "../public/fractions/grids.js";
+import {
+  baseGrid,
+  hundredthsGrid,
+  tenthsGrid,
+  unitGrid,
+} from "../src/activities/fractions/grids.ts";
 
 const tenths = Number(process.argv[2] ?? 7);
 const hundredths = Number(process.argv[3] ?? 5);
@@ -24,13 +29,19 @@ for (const [name, svg] of Object.entries(files)) {
   writeFileSync(`${out}/${name}.svg`, sized);
   const html = `${out}/.${name}.html`;
   writeFileSync(html, `<html><body style="margin:0;background:transparent">${sized}</body></html>`);
-  execFileSync(CHROME, [
-    "--headless", "--disable-gpu", "--hide-scrollbars",
-    "--default-background-color=00000000",
-    `--window-size=${PX},${PX}`,
-    `--screenshot=${out}/${name}.png`,
-    `file://${html}`,
-  ], { stdio: "ignore" });
-  execFileSync("rm", [html]);
+  execFileSync(
+    CHROME,
+    [
+      "--headless",
+      "--disable-gpu",
+      "--hide-scrollbars",
+      "--default-background-color=00000000",
+      `--window-size=${PX},${PX}`,
+      `--screenshot=${out}/${name}.png`,
+      `file://${html}`,
+    ],
+    { stdio: "ignore" },
+  );
+  rmSync(html);
   console.log(`exports/${name}.png`);
 }
