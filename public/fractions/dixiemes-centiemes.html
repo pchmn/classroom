@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dixièmes et centièmes</title>
+<link rel="stylesheet" href="../style.css">
+<style>
+  body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+
+  header { display: flex; align-items: center; gap: 1.5rem; padding: 0.8rem 1.5rem; flex-wrap: wrap; }
+  header a { color: inherit; text-decoration: none; font-size: 1.4rem; }
+  .controls { display: flex; gap: 1.2rem; align-items: center; flex-wrap: wrap; margin-left: auto; }
+  .stepper { display: flex; align-items: center; gap: 0.4rem; font-weight: 600; }
+  .stepper output { min-width: 1.4em; text-align: center; font-size: 1.3rem; }
+  .stepper .swatch { width: 0.9rem; height: 0.9rem; border-radius: 3px; }
+
+  #stage { position: relative; flex: 1; touch-action: none; }
+
+  .grid { position: absolute; cursor: grab; user-select: none; touch-action: none; }
+  .grid.base { cursor: default; }
+  .grid.dragging { cursor: grabbing; filter: drop-shadow(0 8px 16px rgb(0 0 0 / 0.25)); }
+  .grid > svg { display: block; width: 100%; height: 100%; }
+  .grid .label {
+    position: absolute; top: 100%; left: 0; right: 0; margin-top: 0.5rem;
+    text-align: center; font-size: calc(var(--grid-size) * 0.075); font-weight: 700; white-space: nowrap;
+    transition: opacity 150ms;
+  }
+  .grid.snapped .label { opacity: 0; }
+  .label .frac { vertical-align: middle; }
+  #board-label {
+    position: absolute; text-align: center; margin-top: 0.5rem;
+    font-size: calc(var(--grid-size) * 0.075); font-weight: 700; white-space: nowrap;
+  }
+  .grid.animating { transition: left 450ms cubic-bezier(0.22, 1, 0.36, 1), top 450ms cubic-bezier(0.22, 1, 0.36, 1); }
+
+  #equation {
+    display: flex; align-items: center; justify-content: center; gap: 0.6em;
+    font-size: clamp(1.6rem, 4vw, 3rem); font-weight: 700; padding: 0.4rem 0 1.2rem;
+  }
+  #equation[hidden] { display: none; }
+  .frac { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.1; }
+  .frac span:first-child { border-bottom: 0.08em solid currentColor; padding: 0 0.15em; }
+</style>
+</head>
+<body>
+<header>
+  <a href="../" aria-label="Retour aux activités">←</a>
+  <h1>Dixièmes et centièmes</h1>
+  <div class="controls">
+    <div class="stepper">
+      <span class="swatch" style="background: var(--unit)"></span>Unités
+      <button data-step="units" data-delta="-1" aria-label="Moins d'unités">−</button>
+      <output id="units-value"></output>
+      <button data-step="units" data-delta="1" aria-label="Plus d'unités">+</button>
+    </div>
+    <div class="stepper">
+      <span class="swatch" style="background: var(--tenths)"></span>Dixièmes
+      <button data-step="tenths" data-delta="-1" aria-label="Moins de dixièmes">−</button>
+      <output id="tenths-value"></output>
+      <button data-step="tenths" data-delta="1" aria-label="Plus de dixièmes">+</button>
+    </div>
+    <div class="stepper">
+      <span class="swatch" style="background: var(--hundredths)"></span>Centièmes
+      <button data-step="hundredths" data-delta="-1" aria-label="Moins de centièmes">−</button>
+      <output id="hundredths-value"></output>
+      <button data-step="hundredths" data-delta="1" aria-label="Plus de centièmes">+</button>
+    </div>
+    <button id="stack">Superposer</button>
+    <button id="reset">Séparer</button>
+    <button id="toggle-eq">Montrer le calcul</button>
+  </div>
+</header>
+
+<main id="stage"></main>
+
+<div id="equation" hidden></div>
+
+<script type="module">
+import { baseGrid, unitGrid, tenthsGrid, hundredthsGrid, COLORS } from "./grids.js";
+
+for (const [k, v] of Object.entries(COLORS)) document.documentElement.style.setProperty(`--${k}`, v);
+
+const MAX = { units: 3, tenths: 9, hundredths: 9 };
+const LABEL_RATIO = 0.22;
+const params = new URLSearchParams(location.search);
+const clamp = (key, v) => Math.max(0, Math.min(MAX[key], v || 0));
+const state = {
+  units: clamp("units", Number(params.get("u") ?? 0)),
+  tenths: clamp("tenths", Number(params.get("d") ?? 7)),
+  hundredths: clamp("hundredths", Number(params.get("c") ?? 5)),
+};
+
+const stage = document.getElementById("stage");
+const frac = (n, d, color) => `<span class="frac" style="color:${color}"><span>${n}</span><span>${d}</span></span>`;
+let grids = {};
+let bases = [];
+let overlays = [];
+// Overlay placement: "home", a base id (snapped), or a free {x, y} in grid-size units.
+const at = {};
+const home = {};
+let size = 0;
+let topZ = 10;
+let boardLabel;
+
+function build() {
+  stage.replaceChildren();
+  grids = {};
+  boardLabel = document.createElement("div");
+  boardLabel.id = "board-label";
+  stage.append(boardLabel);
+  bases = Array.from({ length: state.units + 1 }, (_, i) => `base-${i}`);
+  overlays = [...Array.from({ length: state.units }, (_, i) => `unit-${i}`), "tenths", "hundredths"];
+  for (const id of [...bases, ...overlays]) {
+    const el = document.createElement("div");
+    el.className = id.startsWith("base") ? "grid base" : "grid";
+    el.dataset.id = id;
+    el.innerHTML = `<div class="svg"></div><div class="label"></div>`;
+    stage.append(el);
+    grids[id] = el;
+    if (!id.startsWith("base")) {
+      at[id] = "home";
+      makeDraggable(id);
+    }
+  }
+}
+
+function layout() {
+  const w = stage.clientWidth;
+  const h = stage.clientHeight;
+  // With several units, the base grids touch to form one board on its own row.
+  const oneRow = bases.length === 1;
+  const rows = oneRow ? [[...bases, ...overlays]] : [bases, overlays];
+  const cols = Math.max(...rows.map((r) => r.length));
+  size = Math.min((w * 0.9) / cols, (h - 20) / (rows.length * (1 + LABEL_RATIO)));
+  const labelH = size * LABEL_RATIO;
+  const gapY = (h - rows.length * (size + labelH)) / (rows.length + 1);
+  rows.forEach((row, r) => {
+    const touching = !oneRow && r === 0;
+    // The SVG viewBox pads 1 unit around the 100-unit grid; overlap that so borders merge.
+    const gapX = touching ? -size * 2 / 102 : (w - row.length * size) / (row.length + 1);
+    const startX = touching ? (w - row.length * size - (row.length - 1) * gapX) / 2 : gapX;
+    row.forEach((id, c) => {
+      home[id] = { x: (startX + c * (size + gapX)) / size, y: (gapY + r * (size + labelH + gapY)) / size };
+    });
+  });
+  stage.style.setProperty("--grid-size", `${size}px`);
+  boardLabel.style.left = `${home[bases[0]].x * size}px`;
+  boardLabel.style.top = `${(home[bases[0]].y + 1) * size}px`;
+  boardLabel.style.width = `${bases.length * size}px`;
+  for (const id of Object.keys(grids)) {
+    grids[id].style.width = grids[id].style.height = `${size}px`;
+    place(id);
+  }
+}
+
+function resolve(id) {
+  const a = at[id] ?? "home";
+  if (a === "home") return home[id];
+  if (typeof a === "string") return home[a];
+  return a;
+}
+
+function place(id) {
+  const el = grids[id];
+  const p = resolve(id);
+  el.style.left = `${p.x * size}px`;
+  el.style.top = `${p.y * size}px`;
+  el.classList.toggle("snapped", typeof at[id] === "string" && at[id].startsWith("base"));
+  updateBaseLabels();
+}
+
+const unitLabel = (color) => `1 unité = ${frac(100, 100, color)}`;
+
+function hundredthsOf(id) {
+  if (id.startsWith("unit")) return 100;
+  return id === "tenths" ? state.tenths * 10 : state.hundredths;
+}
+
+function updateBaseLabels() {
+  const covered = overlays.filter((id) => bases.includes(at[id])).reduce((sum, id) => sum + hundredthsOf(id), 0);
+  boardLabel.innerHTML = covered ? frac(covered, 100, COLORS.total) : "";
+  for (const base of bases) grids[base].querySelector(".label").innerHTML = covered ? "" : unitLabel("inherit");
+}
+
+function render() {
+  const { units, tenths, hundredths } = state;
+  for (const id of bases) grids[id].querySelector(".svg").innerHTML = baseGrid();
+  updateBaseLabels();
+  for (let i = 0; i < units; i++) {
+    grids[`unit-${i}`].querySelector(".svg").innerHTML = unitGrid();
+    grids[`unit-${i}`].querySelector(".label").innerHTML = unitLabel(COLORS.unit);
+  }
+  grids.tenths.querySelector(".svg").innerHTML = tenthsGrid(tenths);
+  grids.hundredths.querySelector(".svg").innerHTML = hundredthsGrid(hundredths, tenths);
+  grids.tenths.querySelector(".label").innerHTML = frac(tenths, 10, COLORS.tenths);
+  grids.hundredths.querySelector(".label").innerHTML = frac(hundredths, 100, COLORS.hundredths);
+  for (const key of Object.keys(state)) document.getElementById(`${key}-value`).textContent = state[key];
+
+  const total = units * 100 + tenths * 10 + hundredths;
+  const unitTerm = units > 0 ? `<span style="color:${COLORS.unit}">${units}</span> + ` : "";
+  document.getElementById("equation").innerHTML =
+    `${frac(total, 100, COLORS.total)} = ${unitTerm}${frac(tenths, 10, COLORS.tenths)} + ${frac(hundredths, 100, COLORS.hundredths)}`;
+
+  const url = new URL(location);
+  url.searchParams.set("u", units);
+  url.searchParams.set("d", tenths);
+  url.searchParams.set("c", hundredths);
+  history.replaceState(null, "", url);
+}
+
+function moveTo(id, target) {
+  const el = grids[id];
+  el.classList.add("animating");
+  at[id] = target;
+  place(id);
+  el.addEventListener("transitionend", () => el.classList.remove("animating"), { once: true });
+}
+
+function makeDraggable(id) {
+  const el = grids[id];
+  el.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    el.classList.add("dragging");
+    el.style.zIndex = ++topZ;
+    const from = resolve(id);
+    const start = { px: e.clientX, py: e.clientY };
+
+    const move = (ev) => {
+      at[id] = { x: from.x + (ev.clientX - start.px) / size, y: from.y + (ev.clientY - start.py) / size };
+      place(id);
+    };
+    const up = () => {
+      el.classList.remove("dragging");
+      el.removeEventListener("pointermove", move);
+      const p = resolve(id);
+      const nearest = bases.find((b) => Math.hypot(p.x - home[b].x, p.y - home[b].y) < 0.25);
+      if (nearest) moveTo(id, nearest);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up, { once: true });
+    el.addEventListener("pointercancel", up, { once: true });
+  });
+}
+
+document.querySelectorAll("[data-step]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const key = btn.dataset.step;
+    state[key] = clamp(key, state[key] + Number(btn.dataset.delta));
+    if (key === "units") build();
+    render();
+    layout();
+  });
+});
+
+document.getElementById("stack").addEventListener("click", () => {
+  const targets = overlays.map((id) => [id, id.startsWith("unit") ? `base-${id.split("-")[1]}` : bases.at(-1)]);
+  targets.forEach(([id, base], i) => {
+    setTimeout(() => {
+      grids[id].style.zIndex = ++topZ;
+      moveTo(id, base);
+    }, i * 350);
+  });
+});
+
+document.getElementById("reset").addEventListener("click", () => {
+  for (const id of overlays) moveTo(id, "home");
+});
+
+const eqBtn = document.getElementById("toggle-eq");
+eqBtn.addEventListener("click", () => {
+  const eq = document.getElementById("equation");
+  eq.hidden = !eq.hidden;
+  eqBtn.textContent = eq.hidden ? "Montrer le calcul" : "Cacher le calcul";
+  layout();
+});
+
+window.addEventListener("resize", layout);
+build();
+render();
+layout();
+</script>
+</body>
+</html>

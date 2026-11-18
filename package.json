@@ -1,0 +1,10 @@
+{
+  "name": "classroom-work",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx serve public",
+    "export": "node scripts/export.mjs",
+    "deploy": "npx wrangler pages deploy public --project-name classroom-work"
+  }
+}
