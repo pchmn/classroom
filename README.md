@@ -19,4 +19,4 @@ See [AGENTS.md](AGENTS.md) for the architecture and how to add an activity.
 
 ## Deploy
 
-`pnpm run deploy:pages` builds and uploads `dist/` to the `classroom-work` Cloudflare Pages project, with your local `wrangler login`.
+`pnpm deploy:production` builds and uploads `dist/` to the `classroom-work` Cloudflare Pages project (https://classroom-work-2sj.pages.dev), with your local `wrangler login`. `pnpm deploy:preview` uploads a preview deployment named after the current git branch instead.
