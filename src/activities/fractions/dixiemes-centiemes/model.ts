@@ -14,10 +14,10 @@ const SNAP_DISTANCE = 0.25;
 export const baseIds = (units: number): BaseId[] =>
   Array.from({ length: units + 1 }, (_, i) => `base-${i}` as const);
 
-export const overlayIds = (units: number): OverlayId[] => [
+export const overlayIds = ({ units, tenths, hundredths }: Counts): OverlayId[] => [
   ...Array.from({ length: units }, (_, i) => `unit-${i}` as const),
-  "tenths",
-  "hundredths",
+  ...(tenths > 0 ? (["tenths"] as const) : []),
+  ...(hundredths > 0 ? (["hundredths"] as const) : []),
 ];
 
 export const isBase = (p: Placement | undefined): p is BaseId =>
@@ -72,7 +72,7 @@ export function hundredthsOf(id: OverlayId, counts: Counts) {
 }
 
 export function coveredHundredths(at: Partial<Record<OverlayId, Placement>>, counts: Counts) {
-  return overlayIds(counts.units)
+  return overlayIds(counts)
     .filter((id) => isBase(at[id]))
     .reduce((sum, id) => sum + hundredthsOf(id, counts), 0);
 }
@@ -82,9 +82,9 @@ export function nearestBase(p: Point, bases: BaseId[], home: Record<string, Poin
 }
 
 // Each whole unit covers its own base; tenths and hundredths share the last one.
-export function stackTargets(units: number): [OverlayId, BaseId][] {
-  const bases = baseIds(units);
-  return overlayIds(units).map((id) => [
+export function stackTargets(counts: Counts): [OverlayId, BaseId][] {
+  const bases = baseIds(counts.units);
+  return overlayIds(counts).map((id) => [
     id,
     id.startsWith("unit") ? (`base-${id.split("-")[1]}` as BaseId) : bases.at(-1)!,
   ]);

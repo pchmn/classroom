@@ -11,12 +11,22 @@ import {
 
 describe("computeLayout", () => {
   it("puts every grid on one row when there is a single base", () => {
-    const { home } = computeLayout(1000, 600, baseIds(0), overlayIds(0));
+    const { home } = computeLayout(
+      1000,
+      600,
+      baseIds(0),
+      overlayIds({ units: 0, tenths: 7, hundredths: 5 }),
+    );
     expect(new Set(Object.values(home).map((p) => p.y)).size).toBe(1);
   });
 
   it("makes base grids touch, overlapping their padding", () => {
-    const { home } = computeLayout(1000, 600, baseIds(2), overlayIds(2));
+    const { home } = computeLayout(
+      1000,
+      600,
+      baseIds(2),
+      overlayIds({ units: 2, tenths: 7, hundredths: 5 }),
+    );
     expect(home["base-1"].x - home["base-0"].x).toBeCloseTo(1 - GRID_PADDING_RATIO);
     expect(home["base-0"].y).toBeLessThan(home.tenths.y);
   });
@@ -48,9 +58,19 @@ describe("nearestBase", () => {
   });
 });
 
+describe("overlayIds", () => {
+  it("leaves out the hundredths grid when there are no hundredths", () => {
+    expect(overlayIds({ units: 1, tenths: 2, hundredths: 0 })).toEqual(["unit-0", "tenths"]);
+  });
+
+  it("leaves out the tenths grid when there are no tenths", () => {
+    expect(overlayIds({ units: 0, tenths: 0, hundredths: 3 })).toEqual(["hundredths"]);
+  });
+});
+
 describe("stackTargets", () => {
   it("covers each base with a unit and the last one with tenths and hundredths", () => {
-    expect(stackTargets(2)).toEqual([
+    expect(stackTargets({ units: 2, tenths: 7, hundredths: 5 })).toEqual([
       ["unit-0", "base-0"],
       ["unit-1", "base-1"],
       ["tenths", "base-2"],

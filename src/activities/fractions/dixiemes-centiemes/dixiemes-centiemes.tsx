@@ -38,7 +38,7 @@ type Props = {
 
 export function DixiemesCentiemes({ counts, onCountsChange }: Props) {
   const [showEquation, setShowEquation] = useState(false);
-  const [placements, setPlacements] = usePlacements(counts.units);
+  const [placements, setPlacements] = usePlacements(overlayIds(counts).join());
   const [animating, animate] = useTransientSet<OverlayId>(ANIMATION_MS);
   const { raise, raisedZ } = useRaise<OverlayId>();
   const stackTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -51,7 +51,7 @@ export function DixiemesCentiemes({ counts, onCountsChange }: Props) {
   };
 
   const stack = () => {
-    stackTargets(counts.units).forEach(([id, base], i) => {
+    stackTargets(counts).forEach(([id, base], i) => {
       const timer = setTimeout(() => {
         raise(id);
         moveTo(id, base);
@@ -61,7 +61,7 @@ export function DixiemesCentiemes({ counts, onCountsChange }: Props) {
   };
 
   const separate = () => {
-    for (const id of overlayIds(counts.units)) moveTo(id, "home");
+    for (const id of overlayIds(counts)) moveTo(id, "home");
   };
 
   const setCount = (key: keyof Counts) => (value: number) =>
@@ -125,12 +125,12 @@ export function DixiemesCentiemes({ counts, onCountsChange }: Props) {
 
 type Placements = Partial<Record<OverlayId, Placement>>;
 
-// Changing the number of units rebuilds the board, so every overlay goes back home.
-function usePlacements(units: number) {
-  const [state, setState] = useState<{ units: number; at: Placements }>({ units, at: {} });
-  const at = state.units === units ? state.at : {};
+// Adding or removing a grid rebuilds the board, so every overlay goes back home.
+function usePlacements(board: string) {
+  const [state, setState] = useState<{ board: string; at: Placements }>({ board, at: {} });
+  const at = state.board === board ? state.at : {};
   const setAt = (update: (at: Placements) => Placements) =>
-    setState((s) => ({ units, at: update(s.units === units ? s.at : {}) }));
+    setState((s) => ({ board, at: update(s.board === board ? s.at : {}) }));
   return [at, setAt] as const;
 }
 
@@ -150,7 +150,7 @@ function Board({ counts, placements, onPlace, onDrop, animating, raise, raisedZ 
   const [dragging, setDragging] = useState<OverlayId | null>(null);
 
   const bases = baseIds(counts.units);
-  const overlays = overlayIds(counts.units);
+  const overlays = overlayIds(counts);
   const { size, home } = computeLayout(width, height, bases, overlays);
   const covered = coveredHundredths(placements, counts);
   const ready = size > 0;
@@ -292,16 +292,28 @@ function GridTile({
 
 function Equation({ counts: { units, tenths, hundredths } }: { counts: Counts }) {
   const total = units * 100 + tenths * 10 + hundredths;
+  const terms = [
+    units > 0 && (
+      <span key="units" style={{ color: COLORS.unit }}>
+        {units}
+      </span>
+    ),
+    tenths > 0 && (
+      <Fraction key="tenths" numerator={tenths} denominator={10} color={COLORS.tenths} />
+    ),
+    hundredths > 0 && (
+      <Fraction
+        key="hundredths"
+        numerator={hundredths}
+        denominator={100}
+        color={COLORS.hundredths}
+      />
+    ),
+  ].filter(Boolean);
   return (
     <div className="flex items-center justify-center gap-[0.6em] pt-1.5 pb-5 text-[clamp(1.6rem,4vw,3rem)] font-bold">
       <Fraction numerator={total} denominator={100} color={COLORS.total} /> =
-      {units > 0 && (
-        <>
-          <span style={{ color: COLORS.unit }}>{units}</span> +
-        </>
-      )}
-      <Fraction numerator={tenths} denominator={10} color={COLORS.tenths} /> +
-      <Fraction numerator={hundredths} denominator={100} color={COLORS.hundredths} />
+      {terms.length === 0 ? <span>0</span> : terms.flatMap((t, i) => (i === 0 ? [t] : [" + ", t]))}
     </div>
   );
 }
