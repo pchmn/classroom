@@ -10,7 +10,8 @@
     "test": "vp test",
     "check": "vp check",
     "export": "node scripts/export.ts",
-    "deploy:pages": "vp build && wrangler pages deploy dist --project-name classroom-work"
+    "deploy:preview": "vp build && wrangler pages deploy dist --project-name classroom-work",
+    "deploy:production": "vp build && wrangler pages deploy dist --project-name classroom-work --branch production"
   },
   "dependencies": {
     "@tanstack/react-router": "^1.170.46",
